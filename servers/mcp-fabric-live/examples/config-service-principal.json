@@ -1,0 +1,15 @@
+{
+  "client_id": "client-prod",
+  "azure_subscription": "12345678-1234-1234-1234-123456789012",
+  "fabric_tenant": "contoso.onmicrosoft.com",
+  "synapse_workspace": "contoso-synapse",
+  "auth_method": "service-principal",
+  "service_principal": {
+    "clientId": "your-client-id",
+    "clientSecret": "your-client-secret",
+    "tenantId": "your-tenant-id"
+  },
+  "workspaces": [],
+  "read_only": true,
+  "cache_ttl": 600
+}

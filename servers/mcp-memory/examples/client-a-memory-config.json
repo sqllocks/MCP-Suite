@@ -1,0 +1,13 @@
+{
+  "client_id": "client-a",
+  "profile_name": "ClientA - Acme Corp",
+  "storage_path": "D:\\MCP\\clients\\client-a\\memory",
+  "max_memory_entries": 10000,
+  "retention_days": 365,
+  "enable_semantic_search": false,
+  "embedding_model": "text-embedding-3-small",
+  "similarity_threshold": 0.7,
+  "max_context_window": 5000,
+  "include_related": true,
+  "encrypt_storage": false
+}

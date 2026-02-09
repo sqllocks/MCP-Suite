@@ -1,0 +1,35 @@
+{
+  "client_id": "client-a",
+  "connections": {
+    "prod-sql": {
+      "name": "Production SQL Server",
+      "type": "mssql",
+      "host": "sqlserver.database.windows.net",
+      "port": 1433,
+      "database": "Analytics",
+      "username": "readonly_user",
+      "password": "YOUR_PASSWORD_HERE",
+      "read_only": true,
+      "timeout": 30,
+      "options": {
+        "encrypt": true,
+        "trustServerCertificate": false
+      }
+    },
+    "dev-postgres": {
+      "name": "Development PostgreSQL",
+      "type": "postgres",
+      "host": "localhost",
+      "port": 5432,
+      "database": "dev_db",
+      "username": "dev_user",
+      "password": "YOUR_PASSWORD_HERE",
+      "read_only": true,
+      "timeout": 30
+    }
+  },
+  "max_result_rows": 1000,
+  "query_timeout": 30,
+  "enable_explain_plan": true,
+  "allow_write_operations": false
+}

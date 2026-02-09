@@ -1,0 +1,33 @@
+{
+  "client_id": "client-example",
+  "connections": {
+    "azure-sql-system-mi": {
+      "name": "azure-sql-system-mi",
+      "type": "mssql",
+      "host": "myserver.database.windows.net",
+      "port": 1433,
+      "database": "MyDatabase",
+      "authenticationType": "managed-identity",
+      "read_only": true,
+      "timeout": 30,
+      "options": {
+        "comment": "System-assigned managed identity (no clientId needed)"
+      }
+    },
+    "azure-sql-user-mi": {
+      "name": "azure-sql-user-mi",
+      "type": "mssql",
+      "host": "myserver.database.windows.net",
+      "port": 1433,
+      "database": "MyDatabase",
+      "authenticationType": "managed-identity",
+      "clientId": "your-user-assigned-mi-client-id",
+      "read_only": true,
+      "options": {
+        "comment": "User-assigned managed identity"
+      }
+    }
+  },
+  "max_result_rows": 1000,
+  "allow_write_operations": false
+}

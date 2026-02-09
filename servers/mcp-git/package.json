@@ -1,0 +1,27 @@
+{
+  "name": "@mcp-suite/git",
+  "version": "1.0.0",
+  "type": "module",
+  "bin": {
+    "mcp-git": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "dev": "tsx src/index.ts",
+    "test": "vitest"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^0.5.0",
+    "@mcp-suite/shared": "file:../../shared",
+    "simple-git": "^3.21.0",
+    "parse-diff": "^0.11.0",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.0",
+    "tsx": "^4.7.0",
+    "vitest": "^1.0.0"
+  }
+}

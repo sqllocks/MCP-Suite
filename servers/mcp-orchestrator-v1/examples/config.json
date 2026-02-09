@@ -1,0 +1,60 @@
+{
+  "models": [
+    {
+      "name": "opus",
+      "provider": "anthropic",
+      "model": "claude-opus-4-5-20251101",
+      "costPer1MInputTokens": 15,
+      "costPer1MOutputTokens": 75,
+      "capabilities": [
+        "strategy",
+        "complex-analysis",
+        "synthesis",
+        "coding",
+        "documentation"
+      ],
+      "maxContext": 200000,
+      "enabled": true
+    },
+    {
+      "name": "sonnet",
+      "provider": "anthropic",
+      "model": "claude-sonnet-4-5-20250929",
+      "costPer1MInputTokens": 3,
+      "costPer1MOutputTokens": 15,
+      "capabilities": [
+        "coding",
+        "documentation",
+        "analysis",
+        "data-extraction"
+      ],
+      "maxContext": 200000,
+      "enabled": true
+    },
+    {
+      "name": "haiku",
+      "provider": "anthropic",
+      "model": "claude-haiku-4-5-20251001",
+      "costPer1MInputTokens": 0.25,
+      "costPer1MOutputTokens": 1.25,
+      "capabilities": [
+        "formatting",
+        "simple-queries",
+        "data-extraction",
+        "repetitive-tasks"
+      ],
+      "maxContext": 200000,
+      "enabled": true
+    }
+  ],
+  "defaultOrchestratorModel": "opus",
+  "parallelExecutionEnabled": true,
+  "maxParallelTasks": 5,
+  "enableQualityReview": false,
+  "qualityReviewModel": "opus",
+  "qualityThreshold": 8,
+  "maxRetries": 3,
+  "enableModelEscalation": true,
+  "trackCosts": true,
+  "trackPerformance": true
+}

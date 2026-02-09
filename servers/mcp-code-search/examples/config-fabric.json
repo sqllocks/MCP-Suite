@@ -1,0 +1,18 @@
+{
+  "client_id": "client-a",
+  "github_token": "ghp_YOUR_TOKEN_HERE",
+  "default_github_repos": [
+    "microsoft/fabric-samples",
+    "microsoft/powerbi-samples"
+  ],
+  "client_repo_root": "/path/to/client-a/repos",
+  "allowed_file_extensions": [
+    ".sql", ".dax", ".m", ".py", ".yaml", ".json"
+  ],
+  "exclude_patterns": [
+    ".git", "node_modules", ".venv"
+  ],
+  "max_code_results": 10,
+  "max_file_size_mb": 5,
+  "context_lines": 3
+}

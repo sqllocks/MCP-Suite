@@ -1,0 +1,80 @@
+{
+  "azureSQL": {
+    "enabled": true,
+    "server": "your-server.database.windows.net",
+    "database": "your-database",
+    "useManagedIdentity": true,
+    "pollInterval": 5,
+    "comment": "Set useManagedIdentity to false if using connection string"
+  },
+  "synapse": {
+    "enabled": true,
+    "workspaceName": "your-synapse-workspace",
+    "dedicatedPoolName": "your-sql-pool",
+    "pollInterval": 10,
+    "comment": "Monitors Synapse Analytics pipelines and dedicated pools"
+  },
+  "fabric": {
+    "enabled": true,
+    "workspaceName": "your-fabric-workspace",
+    "warehouseName": "your-warehouse",
+    "lakehouseName": "your-lakehouse",
+    "pollInterval": 5,
+    "logPaths": [
+      "./logs/fabric-warehouse.log",
+      "./logs/fabric-lakehouse.log",
+      "./logs/fabric-notebook.log",
+      "./logs/fabric-dataflow.log"
+    ],
+    "comment": "Create these log directories and configure Fabric to write logs here"
+  },
+  "adf": {
+    "enabled": true,
+    "factoryName": "your-data-factory",
+    "resourceGroup": "your-resource-group",
+    "subscriptionId": "your-subscription-id",
+    "pollInterval": 15,
+    "comment": "Monitors Azure Data Factory pipelines"
+  },
+  "devops": {
+    "enabled": false,
+    "organization": "your-org",
+    "project": "your-project",
+    "personalAccessToken": "PUT_IN_ENV_VARIABLE",
+    "pipelineId": 0,
+    "repositoryUrl": "your-repo",
+    "branchName": "main",
+    "autoCreatePR": true,
+    "comment": "Enable this to integrate with Azure DevOps CI/CD"
+  },
+  "monitoring": {
+    "enabled": false,
+    "logAnalyticsWorkspace": "your-workspace-id",
+    "comment": "Optional: Enable for Azure Monitor / Log Analytics integration"
+  },
+  "remediation": {
+    "autoFixEnabled": true,
+    "autoTestEnabled": true,
+    "autoDeployEnabled": false,
+    "requireApproval": true,
+    "maxRetries": 3,
+    "dryRun": false,
+    "comment": "Start with dryRun=true for testing"
+  },
+  "notifications": {
+    "enabled": false,
+    "teamsWebhook": "https://your-teams-webhook-url",
+    "slackWebhook": "https://your-slack-webhook-url",
+    "emailRecipients": [],
+    "notifyOnSuccess": false,
+    "notifyOnFailure": true,
+    "comment": "Enable notifications to receive alerts"
+  },
+  "healthcare": {
+    "hipaaMode": false,
+    "phiLoggingEnabled": false,
+    "auditAllAccess": false,
+    "encryptionRequired": false,
+    "comment": "Enable hipaaMode if handling PHI/healthcare data"
+  }
+}

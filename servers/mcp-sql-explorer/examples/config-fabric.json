@@ -1,0 +1,63 @@
+{
+  "client_id": "client-fabric",
+  "connections": {
+    "fabric-warehouse": {
+      "name": "Fabric Warehouse",
+      "type": "fabric-warehouse",
+      "host": "your-workspace.datawarehouse.fabric.microsoft.com",
+      "port": 1433,
+      "database": "YourWarehouse",
+      "read_only": true,
+      "timeout": 30,
+      "options": {
+        "encrypt": true,
+        "authentication": {
+          "type": "azure-active-directory-default"
+        }
+      }
+    },
+    "fabric-sql-db": {
+      "name": "Fabric SQL Database",
+      "type": "fabric-sql-database",
+      "host": "your-workspace.pbidedicated.windows.net",
+      "port": 1433,
+      "database": "YourSQLDatabase",
+      "read_only": true,
+      "timeout": 30,
+      "options": {
+        "encrypt": true,
+        "authentication": {
+          "type": "azure-active-directory-default"
+        }
+      }
+    },
+    "fabric-lakehouse": {
+      "name": "Fabric Lakehouse",
+      "type": "fabric-lakehouse",
+      "host": "your-workspace.datawarehouse.fabric.microsoft.com",
+      "port": 1433,
+      "database": "YourLakehouse",
+      "read_only": true,
+      "timeout": 30,
+      "options": {
+        "encrypt": true,
+        "authentication": {
+          "type": "azure-active-directory-default"
+        }
+      }
+    }
+  },
+  "max_result_rows": 1000,
+  "query_timeout": 30,
+  "enable_explain_plan": true,
+  "allow_write_operations": false,
+  "dangerous_keywords": [
+    "DROP",
+    "TRUNCATE",
+    "DELETE",
+    "UPDATE",
+    "INSERT",
+    "ALTER",
+    "CREATE"
+  ]
+}

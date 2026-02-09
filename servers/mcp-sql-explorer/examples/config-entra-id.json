@@ -1,0 +1,42 @@
+{
+  "client_id": "client-example",
+  "connections": {
+    "azure-sql-entra": {
+      "name": "azure-sql-entra",
+      "type": "mssql",
+      "host": "myserver.database.windows.net",
+      "port": 1433,
+      "database": "MyDatabase",
+      "authenticationType": "entra-id",
+      "tenantId": "12345678-1234-1234-1234-123456789012",
+      "clientId": "87654321-4321-4321-4321-210987654321",
+      "clientSecret": "your-client-secret-here",
+      "read_only": true,
+      "timeout": 30
+    },
+    "fabric-warehouse-entra": {
+      "name": "fabric-warehouse-entra",
+      "type": "fabric-warehouse",
+      "host": "xyz123.datawarehouse.fabric.microsoft.com",
+      "database": "MyWarehouse",
+      "authenticationType": "entra-id",
+      "tenantId": "12345678-1234-1234-1234-123456789012",
+      "clientId": "87654321-4321-4321-4321-210987654321",
+      "clientSecret": "your-client-secret-here",
+      "read_only": true
+    },
+    "synapse-entra": {
+      "name": "synapse-entra",
+      "type": "synapse-dedicated",
+      "host": "myworkspace-ondemand.sql.azuresynapse.net",
+      "database": "synapsedw",
+      "authenticationType": "entra-id",
+      "tenantId": "12345678-1234-1234-1234-123456789012",
+      "clientId": "87654321-4321-4321-4321-210987654321",
+      "clientSecret": "your-client-secret-here",
+      "read_only": true
+    }
+  },
+  "max_result_rows": 1000,
+  "allow_write_operations": false
+}

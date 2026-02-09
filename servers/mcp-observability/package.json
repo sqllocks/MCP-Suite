@@ -1,0 +1,29 @@
+{
+  "name": "mcp-observability",
+  "version": "1.0.0",
+  "description": "Comprehensive monitoring, alerting, and cost tracking MCP server",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "start": "node dist/index.js",
+    "dev": "tsc && node dist/index.js"
+  },
+  "keywords": [
+    "mcp",
+    "observability",
+    "monitoring",
+    "alerting",
+    "cost-tracking"
+  ],
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "axios": "^1.6.0",
+    "joi": "^17.11.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.0"
+  }
+}

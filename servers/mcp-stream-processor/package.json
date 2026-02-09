@@ -1,0 +1,35 @@
+{
+  "name": "mcp-stream-processor",
+  "version": "1.0.0",
+  "description": "Real-time data stream processing MCP server",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "start": "node dist/index.js",
+    "dev": "tsc && node dist/index.js"
+  },
+  "keywords": [
+    "mcp",
+    "stream-processing",
+    "kafka",
+    "event-hubs",
+    "hl7",
+    "iot",
+    "real-time"
+  ],
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@azure/event-hubs": "^5.11.0",
+    "@azure/eventhubs-checkpointstore-blob": "^1.0.1",
+    "@azure/storage-blob": "^12.17.0",
+    "kafkajs": "^2.2.4",
+    "hl7-standard": "^2.7.0",
+    "joi": "^17.11.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.0"
+  }
+}

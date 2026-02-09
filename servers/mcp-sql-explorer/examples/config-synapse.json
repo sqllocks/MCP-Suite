@@ -1,0 +1,37 @@
+{
+  "client_id": "client-synapse",
+  "connections": {
+    "synapse-serverless": {
+      "name": "Synapse Serverless SQL Pool",
+      "type": "synapse-serverless",
+      "host": "contoso-workspace-ondemand.sql.azuresynapse.net",
+      "database": "master",
+      "read_only": true,
+      "timeout": 30,
+      "options": {
+        "authentication": {
+          "type": "azure-active-directory-default"
+        },
+        "encrypt": true
+      }
+    },
+    "synapse-dedicated": {
+      "name": "Synapse Dedicated SQL Pool",
+      "type": "synapse-dedicated",
+      "host": "contoso-workspace.sql.azuresynapse.net",
+      "database": "SQLPool1",
+      "read_only": true,
+      "timeout": 30,
+      "options": {
+        "authentication": {
+          "type": "azure-active-directory-default"
+        },
+        "encrypt": true
+      }
+    }
+  },
+  "max_result_rows": 1000,
+  "query_timeout": 30,
+  "enable_explain_plan": true,
+  "allow_write_operations": false
+}

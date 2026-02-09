@@ -1,0 +1,61 @@
+{
+  "name": "auto-remediation-system",
+  "version": "1.0.0",
+  "description": "Automatically detect, fix, test, and deploy error corrections",
+  "main": "dist/index.js",
+  "type": "module",
+  "bin": {
+    "auto-remediate": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "cli": "node dist/cli.js",
+    "quick": "node dist/cli.js quick",
+    "dry-run": "node dist/cli.js start --dry-run",
+    "production": "node dist/cli.js start --production",
+    "patterns": "node dist/cli.js patterns",
+    "status": "node dist/cli.js status",
+    "logs": "node dist/cli.js logs",
+    "test": "node dist/cli.js test",
+    "demo": "node demo.js",
+    "clean": "rm -rf dist .remediation-backups logs",
+    "lint": "eslint . --ext .ts",
+    "format": "prettier --write \"**/*.ts\"",
+    "azure-monitor": "node dist/azure-fabric/index.js",
+    "azure-test": "node scripts/test-azure-connections.js",
+    "azure-config": "node -e \"const {generateSampleConfig}=require('./dist/azure-fabric/config.js');require('fs').writeFileSync('azure-config.json',generateSampleConfig());console.log('✅ azure-config.json created')\"",
+    "azure-validate": "node -e \"const {loadConfig,validateConfig}=require('./dist/azure-fabric/config.js');loadConfig().then(c=>{const v=validateConfig(c);console.log(v.valid?'✅ Valid':'❌ Errors:',v.errors)})\"",
+    "azure-logs": "node dist/cli.js logs --audit",
+    "azure-status": "node dist/cli.js status",
+    "fabric-validate": "node scripts/validate-fabric-sql.js",
+    "fabric-convert": "node scripts/convert-sql-to-fabric.js"
+  },
+  "keywords": [
+    "automation",
+    "remediation",
+    "error-detection",
+    "auto-fix",
+    "devops",
+    "monitoring",
+    "testing",
+    "deployment",
+    "security"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^11.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.5",
+    "typescript": "^5.3.3",
+    "eslint": "^8.56.0",
+    "@typescript-eslint/eslint-plugin": "^6.15.0",
+    "@typescript-eslint/parser": "^6.15.0",
+    "prettier": "^3.1.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
