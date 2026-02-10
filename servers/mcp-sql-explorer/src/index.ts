@@ -1,541 +1,283 @@
-#!/usr/bin/env node
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
   CallToolRequestSchema,
-  ListToolsRequestSchema,
-  Tool,
+  ListToolsRequestSchema
 } from '@modelcontextprotocol/sdk/types.js';
-import { createLogger, loadConfigFromEnv } from '@mcp-suite/shared';
-import { Config, ConfigSchema } from './config.js';
-import { ConnectionPool } from './connectors/base-connector.js';
-import { MSSQLConnector } from './connectors/mssql-connector.js';
-import { PostgresConnector } from './connectors/postgres-connector.js';
-import { FabricConnector } from './connectors/fabric-connector.js';
+import * as path from 'path';
+import {
+  config,
+  createLogger,
+  createModelManager,
+  ModelManager,
+  Logger,
+  createToolDefinition,
+  createTextContent,
+  createErrorResponse
+} from '@mcp-suite/shared';
+
+// CRITICAL: Redirect console to stderr FIRST to prevent JSON-RPC corruption
+console.log = console.error;
+console.info = console.error;
+console.warn = console.error;
+
+const SERVER_NAME = 'mcp-sql-explorer';
 
 class SQLExplorerServer {
   private server: Server;
-  private config: Config;
-  private logger: ReturnType<typeof createLogger>;
-  private connectionPool: ConnectionPool;
+  private logger: Logger;
+  private modelManager: ModelManager;
 
-  constructor(config: Config) {
-    this.config = config;
-    this.logger = createLogger({ name: 'mcp-sql-explorer' });
-    this.connectionPool = new ConnectionPool();
+  constructor() {
+    // Logger writes to stderr (no stdout pollution)
+    this.logger = createLogger({
+      serviceName: SERVER_NAME,
+      level: process.env.LOG_LEVEL || 'info',
+      logToFile: true,
+      logDir: path.join(config.getWorkspace(), 'logs')
+    });
 
-    // Create MCP server
+    this.modelManager = createModelManager(
+      config.getOllamaUrl(),
+      this.logger,
+      config.getModelForServer(SERVER_NAME)
+    );
+
     this.server = new Server(
       {
-        name: 'mcp-sql-explorer',
-        version: '1.0.0',
+        name: SERVER_NAME,
+        version: '3.0.0'
       },
       {
         capabilities: {
-          tools: {},
-        },
+          tools: {}
+        }
       }
     );
 
     this.setupHandlers();
-    this.logger.info(
-      { client_id: this.config.client_id, connections: Object.keys(this.config.connections) },
-      'SQL Explorer Server initialized'
-    );
+    this.logger.info(`${SERVER_NAME} initialized`);
   }
 
-  private setupHandlers(): void {
+  private setupHandlers() {
     // List available tools
     this.server.setRequestHandler(ListToolsRequestSchema, async () => {
-      const connectionNames = Object.keys(this.config.connections);
-      
-      const tools: Tool[] = [
-        {
-          name: 'sql_query',
-          description: `Execute read-only SQL queries. Available connections: ${connectionNames.join(', ')}`,
-          inputSchema: {
-            type: 'object',
-            properties: {
-              connection_name: {
+      return {
+        tools: [
+          createToolDefinition(
+            'generate_sql',
+            'Generate SQL query from natural language description',
+            {
+              description: {
                 type: 'string',
-                enum: connectionNames,
-                description: 'Connection name',
+                description: 'Natural language description of what the query should do'
               },
+              schema: {
+                type: 'string',
+                description: 'Optional database schema context'
+              },
+              dialect: {
+                type: 'string',
+                description: 'Optional SQL dialect (e.g., PostgreSQL, MySQL, SQLite)',
+                enum: ['PostgreSQL', 'MySQL', 'SQLite', 'SQL Server', 'Oracle']
+              }
+            },
+            ['description']
+          ),
+          createToolDefinition(
+            'query_sql',
+            'Analyze SQL query and provide insights, optimization suggestions',
+            {
               query: {
                 type: 'string',
-                description: 'SQL query to execute',
-              },
-              limit: {
-                type: 'number',
-                description: 'Maximum rows to return',
-                default: 100,
-              },
-            },
-            required: ['connection_name', 'query'],
-          },
-        },
-        {
-          name: 'sql_get_schema',
-          description: 'Get table schema information',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              connection_name: {
-                type: 'string',
-                enum: connectionNames,
-                description: 'Connection name',
-              },
-              table: {
-                type: 'string',
-                description: 'Table name',
+                description: 'SQL query to analyze'
               },
               schema: {
                 type: 'string',
-                description: 'Schema name (optional)',
-              },
+                description: 'Optional database schema context'
+              }
             },
-            required: ['connection_name', 'table'],
-          },
-        },
-        {
-          name: 'sql_list_tables',
-          description: 'List all tables in database',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              connection_name: {
+            ['query']
+          ),
+          createToolDefinition(
+            'explain_sql',
+            'Explain what a SQL query does in simple terms',
+            {
+              sql: {
                 type: 'string',
-                enum: connectionNames,
-                description: 'Connection name',
-              },
-              schema: {
-                type: 'string',
-                description: 'Schema name (optional)',
-              },
+                description: 'SQL query to explain'
+              }
             },
-            required: ['connection_name'],
-          },
-        },
-        {
-          name: 'sql_search_columns',
-          description: 'Search for columns across all tables',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              connection_name: {
-                type: 'string',
-                enum: connectionNames,
-                description: 'Connection name',
-              },
-              pattern: {
-                type: 'string',
-                description: 'Column name pattern to search',
-              },
-              schema: {
-                type: 'string',
-                description: 'Schema name (optional)',
-              },
-            },
-            required: ['connection_name', 'pattern'],
-          },
-        },
-        {
-          name: 'sql_get_stats',
-          description: 'Get table statistics',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              connection_name: {
-                type: 'string',
-                enum: connectionNames,
-                description: 'Connection name',
-              },
-              table: {
-                type: 'string',
-                description: 'Table name',
-              },
-              schema: {
-                type: 'string',
-                description: 'Schema name (optional)',
-              },
-            },
-            required: ['connection_name', 'table'],
-          },
-        },
-        {
-          name: 'sql_explain_plan',
-          description: 'Get query execution plan',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              connection_name: {
-                type: 'string',
-                enum: connectionNames,
-                description: 'Connection name',
-              },
-              query: {
-                type: 'string',
-                description: 'SQL query to analyze',
-              },
-            },
-            required: ['connection_name', 'query'],
-          },
-        },
-      ];
-
-      // Add Fabric Lakehouse-specific tools if any Lakehouse connections exist
-      const hasLakehouse = connectionNames.some(
-        name => this.config.connections[name].type === 'fabric-lakehouse'
-      );
-
-      if (hasLakehouse) {
-        const lakehouseConnections = connectionNames.filter(
-          name => this.config.connections[name].type === 'fabric-lakehouse'
-        );
-
-        tools.push(
-          {
-            name: 'fabric_lakehouse_list_files',
-            description: 'List files in Fabric Lakehouse',
-            inputSchema: {
-              type: 'object',
-              properties: {
-                connection_name: {
-                  type: 'string',
-                  enum: lakehouseConnections,
-                  description: 'Lakehouse connection name',
-                },
-                path: {
-                  type: 'string',
-                  description: 'Path to list files from',
-                  default: '/',
-                },
-              },
-              required: ['connection_name'],
-            },
-          },
-          {
-            name: 'fabric_lakehouse_delta_properties',
-            description: 'Get Delta table properties for Fabric Lakehouse',
-            inputSchema: {
-              type: 'object',
-              properties: {
-                connection_name: {
-                  type: 'string',
-                  enum: lakehouseConnections,
-                  description: 'Lakehouse connection name',
-                },
-                table: {
-                  type: 'string',
-                  description: 'Table name',
-                },
-                schema: {
-                  type: 'string',
-                  description: 'Schema name (optional)',
-                  default: 'dbo',
-                },
-              },
-              required: ['connection_name', 'table'],
-            },
-          }
-        );
-      }
-
-      return { tools };
+            ['sql']
+          )
+        ]
+      };
     });
 
     // Handle tool calls
     this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const { name, arguments: args } = request.params;
 
-      try {
-        switch (name) {
-          case 'sql_query':
-            return await this.handleQuery(args);
-          case 'sql_get_schema':
-            return await this.handleGetSchema(args);
-          case 'sql_list_tables':
-            return await this.handleListTables(args);
-          case 'sql_search_columns':
-            return await this.handleSearchColumns(args);
-          case 'sql_get_stats':
-            return await this.handleGetStats(args);
-          case 'sql_explain_plan':
-            return await this.handleExplainPlan(args);
-          case 'fabric_lakehouse_list_files':
-            return await this.handleLakehouseListFiles(args);
-          case 'fabric_lakehouse_delta_properties':
-            return await this.handleLakehouseDeltaProperties(args);
-          default:
-            throw new Error(`Unknown tool: ${name}`);
-        }
-      } catch (error) {
-        this.logger.error({ error, tool: name }, 'Tool execution failed');
-        return {
-          content: [
-            {
-              type: 'text',
-              text: `Error: ${error instanceof Error ? error.message : String(error)}`,
-            },
-          ],
-          isError: true,
-        };
+      switch (name) {
+        case 'generate_sql':
+          return await this.handleGenerateSQL(args as any);
+        case 'query_sql':
+          return await this.handleQuerySQL(args as any);
+        case 'explain_sql':
+          return await this.handleExplainSQL(args as any);
+        default:
+          throw new Error(`Unknown tool: ${name}`);
       }
     });
   }
 
-  private async getConnector(connectionName: string) {
-    const config = this.config.connections[connectionName];
-    if (!config) {
-      throw new Error(`Connection '${connectionName}' not found`);
+  private async handleGenerateSQL(args: any) {
+    const { description, schema, dialect } = args;
+
+    if (!description) {
+      return createErrorResponse('Missing required parameter: description');
     }
 
-    // Create connector based on type
-    let connector;
-    switch (config.type) {
-      case 'mssql':
-        connector = new MSSQLConnector(config, this.logger);
-        break;
-      case 'fabric-warehouse':
-      case 'fabric-sql-database':
-      case 'fabric-lakehouse':
-      case 'synapse-serverless':
-      case 'synapse-dedicated':
-        connector = new FabricConnector(config, this.logger);
-        break;
-      case 'postgres':
-        connector = new PostgresConnector(config, this.logger);
-        break;
-      case 'mysql':
-        throw new Error('MySQL connector not yet implemented');
-      default:
-        throw new Error(`Unsupported database type: ${config.type}`);
-    }
+    try {
+      const startTime = Date.now();
 
-    return await this.connectionPool.getConnection(connectionName, config, connector);
+      const prompt = `Generate a SQL query for the following request:
+${description}
+
+${schema ? `Database schema:\n${schema}\n\n` : ''}
+${dialect ? `SQL Dialect: ${dialect}\n\n` : ''}
+
+Provide only the SQL query, no explanations.`;
+
+      const response = await this.modelManager.generate(prompt);
+
+      const duration = Date.now() - startTime;
+
+      this.logger.info('SQL generated from natural language', {
+        tool: 'generate_sql',
+        duration_ms: duration,
+        model: this.modelManager.getCurrentModel()
+      });
+
+      return createTextContent(response);
+    } catch (error: any) {
+      this.logger.error('SQL generation failed', {
+        tool: 'generate_sql',
+        error: error.message
+      });
+
+      return createErrorResponse(error);
+    }
   }
 
-  private validateQuery(query: string): void {
-    if (!this.config.allow_write_operations) {
-      const upperQuery = query.toUpperCase();
-      for (const keyword of this.config.dangerous_keywords) {
-        if (upperQuery.includes(keyword)) {
-          throw new Error(`Query contains dangerous keyword: ${keyword}. Write operations are disabled.`);
-        }
+  private async handleQuerySQL(args: any) {
+    const { query, schema } = args;
+
+    if (!query) {
+      return createErrorResponse('Missing required parameter: query');
+    }
+
+    try {
+      const startTime = Date.now();
+
+      const prompt = this.buildQueryPrompt(query, schema);
+      const response = await this.modelManager.generate(prompt);
+
+      const duration = Date.now() - startTime;
+
+      this.logger.info('SQL query analyzed', {
+        tool: 'query_sql',
+        duration_ms: duration,
+        queryLength: query.length,
+        model: this.modelManager.getCurrentModel()
+      });
+
+      return createTextContent(response);
+    } catch (error: any) {
+      this.logger.error('SQL query analysis failed', {
+        tool: 'query_sql',
+        error: error.message
+      });
+
+      return createErrorResponse(error);
+    }
+  }
+
+  private async handleExplainSQL(args: any) {
+    const { sql } = args;
+
+    if (!sql) {
+      return createErrorResponse('Missing required parameter: sql');
+    }
+
+    try {
+      const startTime = Date.now();
+
+      const prompt = `Explain the following SQL query in simple terms:
+
+${sql}
+
+Provide a clear explanation of what this query does, step by step.`;
+
+      const response = await this.modelManager.generate(prompt);
+
+      const duration = Date.now() - startTime;
+
+      this.logger.info('SQL explained', {
+        tool: 'explain_sql',
+        duration_ms: duration,
+        model: this.modelManager.getCurrentModel()
+      });
+
+      return createTextContent(response);
+    } catch (error: any) {
+      this.logger.error('SQL explanation failed', {
+        tool: 'explain_sql',
+        error: error.message
+      });
+
+      return createErrorResponse(error);
+    }
+  }
+
+  private buildQueryPrompt(query: string, schema?: string): string {
+    let prompt = `Analyze the following SQL query:\n\n${query}\n\n`;
+
+    if (schema) {
+      prompt += `Database schema:\n${schema}\n\n`;
+    }
+
+    prompt += 'Provide insights about this query including:\n';
+    prompt += '1. What it does\n';
+    prompt += '2. Potential performance issues\n';
+    prompt += '3. Suggestions for optimization\n';
+
+    return prompt;
+  }
+
+  async start() {
+    try {
+      // Check Ollama health
+      const isHealthy = await this.modelManager.checkHealth();
+      if (!isHealthy) {
+        this.logger.warn('Ollama not available, starting anyway');
       }
+
+      const transport = new StdioServerTransport();
+      await this.server.connect(transport);
+
+      this.logger.info(`${SERVER_NAME} MCP server started`, {
+        model: this.modelManager.getCurrentModel(),
+        tools: ['generate_sql', 'query_sql', 'explain_sql']
+      });
+    } catch (error: any) {
+      console.error('Failed to start server:', error);
+      process.exit(1);
     }
-  }
-
-  private async handleQuery(args: any) {
-    const { connection_name, query, limit = 100 } = args;
-
-    this.logger.info({ connection: connection_name }, 'Executing query');
-
-    // Validate query
-    this.validateQuery(query);
-
-    // Get connector
-    const connector = await this.getConnector(connection_name);
-
-    // Add LIMIT if not present
-    let finalQuery = query.trim();
-    if (!finalQuery.toUpperCase().includes('LIMIT') && !finalQuery.toUpperCase().includes('TOP')) {
-      finalQuery += ` LIMIT ${Math.min(limit, this.config.max_result_rows)}`;
-    }
-
-    // Execute query
-    const result = await connector.query(finalQuery);
-
-    // Truncate if needed
-    if (result.rows.length > this.config.max_result_rows) {
-      result.rows = result.rows.slice(0, this.config.max_result_rows);
-      result.rowCount = this.config.max_result_rows;
-    }
-
-    return {
-      content: [
-        {
-          type: 'text',
-          text: JSON.stringify(result, null, 2),
-        },
-      ],
-    };
-  }
-
-  private async handleGetSchema(args: any) {
-    const { connection_name, table, schema } = args;
-
-    this.logger.info({ connection: connection_name, table }, 'Getting table schema');
-
-    const connector = await this.getConnector(connection_name);
-    const tableSchema = await connector.getTableSchema(table, schema);
-
-    return {
-      content: [
-        {
-          type: 'text',
-          text: JSON.stringify(tableSchema, null, 2),
-        },
-      ],
-    };
-  }
-
-  private async handleListTables(args: any) {
-    const { connection_name, schema } = args;
-
-    this.logger.info({ connection: connection_name }, 'Listing tables');
-
-    const connector = await this.getConnector(connection_name);
-    const tables = await connector.listTables(schema);
-
-    return {
-      content: [
-        {
-          type: 'text',
-          text: JSON.stringify({ tables, count: tables.length }, null, 2),
-        },
-      ],
-    };
-  }
-
-  private async handleSearchColumns(args: any) {
-    const { connection_name, pattern, schema } = args;
-
-    this.logger.info({ connection: connection_name, pattern }, 'Searching columns');
-
-    const connector = await this.getConnector(connection_name);
-    const columns = await connector.searchColumns(pattern, schema);
-
-    return {
-      content: [
-        {
-          type: 'text',
-          text: JSON.stringify({ columns, count: columns.length }, null, 2),
-        },
-      ],
-    };
-  }
-
-  private async handleGetStats(args: any) {
-    const { connection_name, table, schema } = args;
-
-    this.logger.info({ connection: connection_name, table }, 'Getting table stats');
-
-    const connector = await this.getConnector(connection_name);
-    const stats = await connector.getTableStats(table, schema);
-
-    return {
-      content: [
-        {
-          type: 'text',
-          text: JSON.stringify(stats, null, 2),
-        },
-      ],
-    };
-  }
-
-  private async handleExplainPlan(args: any) {
-    const { connection_name, query } = args;
-
-    this.logger.info({ connection: connection_name }, 'Getting explain plan');
-
-    // Validate query
-    this.validateQuery(query);
-
-    const connector = await this.getConnector(connection_name);
-    const plan = await connector.explainQuery(query);
-
-    return {
-      content: [
-        {
-          type: 'text',
-          text: JSON.stringify(plan, null, 2),
-        },
-      ],
-    };
-  }
-
-  private async handleLakehouseListFiles(args: any) {
-    const { connection_name, path = '/' } = args;
-
-    this.logger.info({ connection: connection_name, path }, 'Listing Lakehouse files');
-
-    const connector = await this.getConnector(connection_name);
-    
-    if (!(connector instanceof FabricConnector)) {
-      throw new Error('This operation is only supported for Fabric Lakehouse connections');
-    }
-
-    const files = await connector.getLakehouseFiles(path);
-
-    return {
-      content: [
-        {
-          type: 'text',
-          text: JSON.stringify({ files, count: files.length }, null, 2),
-        },
-      ],
-    };
-  }
-
-  private async handleLakehouseDeltaProperties(args: any) {
-    const { connection_name, table, schema = 'dbo' } = args;
-
-    this.logger.info({ connection: connection_name, table }, 'Getting Delta table properties');
-
-    const connector = await this.getConnector(connection_name);
-    
-    if (!(connector instanceof FabricConnector)) {
-      throw new Error('This operation is only supported for Fabric Lakehouse connections');
-    }
-
-    const properties = await connector.getDeltaTableProperties(table, schema);
-
-    return {
-      content: [
-        {
-          type: 'text',
-          text: JSON.stringify(properties, null, 2),
-        },
-      ],
-    };
-  }
-
-  async run(): Promise<void> {
-    const transport = new StdioServerTransport();
-    await this.server.connect(transport);
-    this.logger.info('Server running on stdio');
-  }
-
-  async shutdown(): Promise<void> {
-    await this.connectionPool.closeAll();
-    this.logger.info('Server shutdown complete');
   }
 }
 
-// Main entry point
-async function main() {
-  try {
-    // Load config from environment variable
-    const config = await loadConfigFromEnv('CONFIG_PATH', {
-      schema: ConfigSchema,
-      defaults: {},
-    });
+const server = new SQLExplorerServer();
+server.start();
 
-    // Create and run server
-    const server = new SQLExplorerServer(config);
-    
-    // Handle shutdown
-    process.on('SIGINT', async () => {
-      await server.shutdown();
-      process.exit(0);
-    });
-
-    await server.run();
-  } catch (error) {
-    console.error('Failed to start server:', error);
-    process.exit(1);
-  }
-}
-
-main();
+export default SQLExplorerServer;

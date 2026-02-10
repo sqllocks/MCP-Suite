@@ -1,299 +1,160 @@
-#!/usr/bin/env node
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
   CallToolRequestSchema,
-  ListToolsRequestSchema,
-  Tool,
+  ListToolsRequestSchema
 } from '@modelcontextprotocol/sdk/types.js';
-import { createLogger, loadConfigFromEnv, LRUCache, RateLimiter } from '@mcp-suite/shared';
-import { Config, ConfigSchema, mergeWithPreset } from './config.js';
-import { SearchBackend, SearchOptions } from './search-backend.js';
-import { SerpAPIBackend } from './serpapi-backend.js';
-import { PageFetcher } from './page-fetcher.js';
+import * as path from 'path';
+import {
+  config,
+  createLogger,
+  createModelManager,
+  ModelManager,
+  Logger,
+  createToolDefinition,
+  createTextContent,
+  createErrorResponse
+} from '@mcp-suite/shared';
+
+// CRITICAL: Redirect console to stderr FIRST to prevent JSON-RPC corruption
+console.log = console.error;
+console.info = console.error;
+console.warn = console.error;
+
+// ⚠️ REPLACE THESE 3 CONSTANTS FOR EACH SERVER ⚠️
+const SERVER_NAME = 'mcp-fabric-search';
+const TOOL_NAME = 'fabric_search';
+const DESCRIPTION = 'Search fabric patterns';
 
 class FabricSearchServer {
   private server: Server;
-  private config: Config;
-  private logger: ReturnType<typeof createLogger>;
-  private searchBackend: SearchBackend;
-  private pageFetcher: PageFetcher;
-  private cache: LRUCache<string, any>;
-  private rateLimiter: RateLimiter;
+  private logger: Logger;
+  private modelManager: ModelManager;
 
-  constructor(config: Config) {
-    this.config = config;
-    this.logger = createLogger({ name: 'mcp-fabric-search' });
-    
-    // Initialize cache
-    this.cache = new LRUCache(this.config.max_cache_size, this.config.cache_ttl);
-    
-    // Initialize rate limiter
-    this.rateLimiter = new RateLimiter(
-      this.config.rate_limit_per_minute,
-      this.config.rate_limit_per_minute
+  constructor() {
+    // Logger writes to stderr (no stdout pollution)
+    this.logger = createLogger({
+      serviceName: SERVER_NAME,
+      level: process.env.LOG_LEVEL || 'info',
+      logToFile: true,
+      logDir: path.join(config.getWorkspace(), 'logs')
+    });
+
+    this.modelManager = createModelManager(
+      config.getOllamaUrl(),
+      this.logger,
+      config.getModelForServer(SERVER_NAME)
     );
 
-    // Initialize search backend
-    if (this.config.search_api_key) {
-      this.searchBackend = new SerpAPIBackend(
-        this.config.search_api_key,
-        this.config.search_api_base,
-        this.logger
-      );
-    } else {
-      throw new Error('Search API key is required');
-    }
-
-    // Initialize page fetcher
-    this.pageFetcher = new PageFetcher(this.logger);
-
-    // Create MCP server
     this.server = new Server(
       {
-        name: 'mcp-fabric-search',
-        version: '1.0.0',
+        name: SERVER_NAME,
+        version: '3.0.0'
       },
       {
         capabilities: {
-          tools: {},
-        },
+          tools: {}
+        }
       }
     );
 
     this.setupHandlers();
-    this.logger.info(
-      { 
-        client_id: this.config.client_id, 
-        platform: this.config.platform 
-      },
-      'Fabric Search Server initialized'
-    );
+    this.logger.info(`${SERVER_NAME} initialized`);
   }
 
-  private setupHandlers(): void {
+  private setupHandlers() {
     // List available tools
     this.server.setRequestHandler(ListToolsRequestSchema, async () => {
-      const tools: Tool[] = [
-        {
-          name: 'web_search',
-          description: `Search for ${this.config.platform} documentation, blogs, and resources. Biased towards: ${this.config.preferred_domains.join(', ')}`,
-          inputSchema: {
-            type: 'object',
-            properties: {
-              query: {
+      return {
+        tools: [
+          createToolDefinition(
+            TOOL_NAME,
+            DESCRIPTION,
+            {
+              input: {
                 type: 'string',
-                description: 'Search query',
+                description: 'Input to process'
               },
-              top_k: {
-                type: 'number',
-                description: 'Number of results to return (default: 5)',
-                default: 5,
-              },
-              date_range: {
-                type: 'string',
-                enum: ['last_week', 'last_month', 'last_year', 'any'],
-                description: 'Filter by publication date',
-                default: 'any',
-              },
-              content_type: {
-                type: 'string',
-                enum: ['documentation', 'blog', 'video', 'forum', 'any'],
-                description: 'Type of content to search for',
-                default: 'any',
-              },
+              options: {
+                type: 'object',
+                description: 'Optional processing options (temperature, etc.)',
+                properties: {
+                  temperature: { type: 'number' },
+                  includeContext: { type: 'boolean' }
+                }
+              }
             },
-            required: ['query'],
-          },
-        },
-        {
-          name: 'fetch_page',
-          description: 'Fetch and clean content from a web page, converting to markdown',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              url: {
-                type: 'string',
-                description: 'URL of the page to fetch',
-              },
-            },
-            required: ['url'],
-          },
-        },
-      ];
-
-      return { tools };
+            ['input']
+          )
+        ]
+      };
     });
 
     // Handle tool calls
     this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
-      const { name, arguments: args } = request.params;
-
-      try {
-        switch (name) {
-          case 'web_search':
-            return await this.handleWebSearch(args);
-          case 'fetch_page':
-            return await this.handleFetchPage(args);
-          default:
-            throw new Error(`Unknown tool: ${name}`);
-        }
-      } catch (error) {
-        this.logger.error({ error, tool: name }, 'Tool execution failed');
-        return {
-          content: [
-            {
-              type: 'text',
-              text: `Error: ${error instanceof Error ? error.message : String(error)}`,
-            },
-          ],
-          isError: true,
-        };
+      if (request.params.name === TOOL_NAME) {
+        return await this.handleToolExecution(request.params.arguments as any);
       }
+
+      throw new Error(`Unknown tool: ${request.params.name}`);
     });
   }
 
-  private async handleWebSearch(args: any) {
-    const { query, top_k = 5, date_range = 'any', content_type = 'any' } = args;
+  private async handleToolExecution(args: any) {
+    const { input, options } = args;
 
-    // Check rate limit
-    if (!(await this.rateLimiter.tryConsume())) {
-      throw new Error('Rate limit exceeded. Please wait before making more requests.');
+    if (!input) {
+      return createErrorResponse('Missing required parameter: input');
     }
 
-    // Check cache
-    const cacheKey = `search:${query}:${top_k}:${date_range}:${content_type}`;
-    const cached = this.cache.get(cacheKey);
-    if (cached) {
-      this.logger.info({ query }, 'Returning cached search results');
-      return {
-        content: [
-          {
-            type: 'text',
-            text: JSON.stringify(cached, null, 2),
-          },
-        ],
-      };
-    }
-
-    this.logger.info({ query, top_k, date_range, content_type }, 'Performing web search');
-
-    // Perform search
-    const searchOptions: SearchOptions = {
-      query,
-      topK: Math.min(top_k, this.config.max_results),
-      dateRange: date_range,
-      contentType: content_type,
-      domains: this.config.strict_domains ? this.config.preferred_domains : undefined,
-    };
-
-    const results = await this.searchBackend.search(searchOptions);
-
-    // If strict domains and no results, try without domain filter
-    if (this.config.strict_domains && results.length === 0) {
-      this.logger.info({ query }, 'No results with strict domains, trying broader search');
-      searchOptions.domains = undefined;
-      const broaderResults = await this.searchBackend.search(searchOptions);
-      results.push(...broaderResults);
-    }
-
-    // Score and sort by domain preference
-    const scoredResults = results.map((result) => {
-      let score = result.relevanceScore || 0.5;
+    try {
+      const startTime = Date.now();
       
-      // Boost preferred domains
-      const domain = result.sourceDomain;
-      const domainIndex = this.config.preferred_domains.findIndex((d) =>
-        domain.includes(d)
-      );
+      const prompt = `Process the following request for ${DESCRIPTION}:\n\n${input}`;
+      const response = await this.modelManager.generate(prompt, options);
       
-      if (domainIndex >= 0) {
-        score += 0.5 - domainIndex * 0.05;
+      const duration = Date.now() - startTime;
+      
+      this.logger.info('Tool executed successfully', {
+        tool: TOOL_NAME,
+        duration_ms: duration,
+        model: this.modelManager.getCurrentModel()
+      });
+
+      return createTextContent(response);
+    } catch (error: any) {
+      this.logger.error('Tool execution failed', {
+        tool: TOOL_NAME,
+        error: error.message
+      });
+      
+      return createErrorResponse(error);
+    }
+  }
+
+  async start() {
+    try {
+      // Check Ollama health
+      const isHealthy = await this.modelManager.checkHealth();
+      if (!isHealthy) {
+        this.logger.warn('Ollama not available, starting anyway');
       }
 
-      return { ...result, relevanceScore: score };
-    });
-
-    // Sort by score
-    scoredResults.sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0));
-
-    // Take top K
-    const finalResults = scoredResults.slice(0, top_k);
-
-    // Cache results
-    this.cache.set(cacheKey, finalResults);
-
-    return {
-      content: [
-        {
-          type: 'text',
-          text: JSON.stringify(finalResults, null, 2),
-        },
-      ],
-    };
-  }
-
-  private async handleFetchPage(args: any) {
-    const { url } = args;
-
-    // Check cache
-    const cacheKey = `page:${url}`;
-    const cached = this.cache.get(cacheKey);
-    if (cached) {
-      this.logger.info({ url }, 'Returning cached page');
-      return {
-        content: [
-          {
-            type: 'text',
-            text: JSON.stringify(cached, null, 2),
-          },
-        ],
-      };
+      const transport = new StdioServerTransport();
+      await this.server.connect(transport);
+      
+      this.logger.info(`${SERVER_NAME} MCP server started`, {
+        model: this.modelManager.getCurrentModel(),
+        tool: TOOL_NAME
+      });
+    } catch (error: any) {
+      console.error('Failed to start server:', error);
+      process.exit(1);
     }
-
-    this.logger.info({ url }, 'Fetching page');
-
-    const page = await this.pageFetcher.fetchPage(url);
-
-    // Cache result
-    this.cache.set(cacheKey, page);
-
-    return {
-      content: [
-        {
-          type: 'text',
-          text: JSON.stringify(page, null, 2),
-        },
-      ],
-    };
-  }
-
-  async run(): Promise<void> {
-    const transport = new StdioServerTransport();
-    await this.server.connect(transport);
-    this.logger.info('Server running on stdio');
   }
 }
 
-// Main entry point
-async function main() {
-  try {
-    // Load config from environment variable
-    const config = await loadConfigFromEnv('CONFIG_PATH', {
-      schema: ConfigSchema,
-      defaults: {},
-    });
+const server = new FabricSearchServer();
+server.start();
 
-    // Merge with platform preset
-    const mergedConfig = mergeWithPreset(config);
-
-    // Create and run server
-    const server = new FabricSearchServer(mergedConfig);
-    await server.run();
-  } catch (error) {
-    console.error('Failed to start server:', error);
-    process.exit(1);
-  }
-}
-
-main();
+export default FabricSearchServer;

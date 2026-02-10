@@ -1,9 +1,0 @@
-{
-  "client_id": "client-a",
-  "repo_roots": [
-    "/home/user/projects/client-a/analytics",
-    "/home/user/projects/client-a/etl-pipelines"
-  ],
-  "max_results": 100,
-  "max_file_size_mb": 10
-}

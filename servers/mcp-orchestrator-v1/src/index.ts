@@ -1,294 +1,349 @@
-#!/usr/bin/env node
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
   CallToolRequestSchema,
-  ListToolsRequestSchema,
+  ListToolsRequestSchema
 } from '@modelcontextprotocol/sdk/types.js';
-import { Orchestrator } from './orchestrator.js';
-import { ConfigSchema, DEFAULT_MODELS, type Config } from './config.js';
-import * as fs from 'fs/promises';
 import * as path from 'path';
-import pino from 'pino';
+import {
+  config,
+  createLogger,
+  createModelManager,
+  ModelManager,
+  Logger,
+  createToolDefinition,
+  createTextContent,
+  createErrorResponse
+} from '@mcp-suite/shared';
 
-const logger = pino({ name: 'mcp-orchestrator' });
+// CRITICAL: Redirect console to stderr FIRST to prevent JSON-RPC corruption
+console.log = console.error;
+console.info = console.error;
+console.warn = console.error;
 
-/**
- * Load configuration
- */
-async function loadConfig(): Promise<Config> {
-  const configPath = process.env.CONFIG_PATH || path.join(process.cwd(), 'config.json');
-  
-  try {
-    const configData = await fs.readFile(configPath, 'utf-8');
-    const config = JSON.parse(configData);
-    
-    // Merge with defaults
-    if (!config.models || config.models.length === 0) {
-      config.models = DEFAULT_MODELS;
-    }
-    
-    // Add API keys from environment
-    for (const model of config.models) {
-      if (model.provider === 'anthropic' && !model.apiKey) {
-        model.apiKey = process.env.ANTHROPIC_API_KEY;
-      }
-    }
-    
-    return ConfigSchema.parse(config);
-  } catch (error) {
-    logger.warn({ error, configPath }, 'Config not found, using defaults');
-    
-    // Use defaults
-    return ConfigSchema.parse({
-      models: DEFAULT_MODELS.map(m => ({
-        ...m,
-        apiKey: m.provider === 'anthropic' ? process.env.ANTHROPIC_API_KEY : undefined,
-      })),
-    });
-  }
+const SERVER_NAME = 'mcp-orchestrator-v1';
+
+interface ServerInfo {
+  name: string;
+  port?: number;
+  model?: string;
+  capabilities?: string[];
+  registeredAt: Date;
+  status: string;
 }
 
-/**
- * Main server
- */
-async function main() {
-  const config = await loadConfig();
-  const orchestrator = new Orchestrator(config, logger);
-  
-  logger.info({ 
-    models: config.models.filter(m => m.enabled).map(m => m.name),
-  }, 'Orchestrator initialized');
-  
-  const server = new Server(
-    {
-      name: 'mcp-orchestrator',
-      version: '1.0.0',
-    },
-    {
-      capabilities: {
-        tools: {},
+class MCPOrchestrator {
+  private server: Server;
+  private logger: Logger;
+  private modelManager: ModelManager;
+  private startTime: Date;
+  private requestCount: number = 0;
+  private registeredServers: Map<string, ServerInfo> = new Map();
+
+  constructor() {
+    this.startTime = new Date();
+
+    // Logger writes to stderr (no stdout pollution)
+    this.logger = createLogger({
+      serviceName: SERVER_NAME,
+      level: process.env.LOG_LEVEL || 'info',
+      logToFile: true,
+      logDir: path.join(config.getWorkspace(), 'logs')
+    });
+
+    this.modelManager = createModelManager(
+      config.getOllamaUrl(),
+      this.logger,
+      config.getModelForServer(SERVER_NAME)
+    );
+
+    this.server = new Server(
+      {
+        name: SERVER_NAME,
+        version: '3.0.0'
       },
-    }
-  );
-  
-  // List tools
-  server.setRequestHandler(ListToolsRequestSchema, async () => {
-    return {
-      tools: [
-        {
-          name: 'orchestrate_task',
-          description: 'Execute a task using optimal multi-model orchestration. Automatically decomposes complex requests into subtasks and routes them to the most appropriate AI models (Opus, Sonnet, Haiku) based on complexity and cost.',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              request: {
+      {
+        capabilities: {
+          tools: {}
+        }
+      }
+    );
+
+    this.setupHandlers();
+    this.logger.info(`${SERVER_NAME} initialized`);
+  }
+
+  private setupHandlers() {
+    // List available tools
+    this.server.setRequestHandler(ListToolsRequestSchema, async () => {
+      return {
+        tools: [
+          createToolDefinition(
+            'get_status',
+            'Get orchestrator status including uptime, registered servers, and system info',
+            {
+              includeServers: {
+                type: 'boolean',
+                description: 'Include list of registered servers in response'
+              }
+            },
+            []
+          ),
+          createToolDefinition(
+            'register_server',
+            'Register a new MCP server with the orchestrator',
+            {
+              name: {
                 type: 'string',
-                description: 'The user request to orchestrate',
+                description: 'Server name (e.g., mcp-error-diagnosis)'
               },
-              maxCost: {
+              port: {
                 type: 'number',
-                description: 'Maximum cost in USD (optional)',
+                description: 'Server port number (optional for MCP servers)'
               },
-              maxDuration: {
-                type: 'number',
-                description: 'Maximum duration in seconds (optional)',
-              },
-              strategy: {
+              model: {
                 type: 'string',
-                enum: ['sequential', 'parallel', 'hybrid'],
-                description: 'Execution strategy (optional, auto-detected by default)',
+                description: 'Model used by the server (optional)'
               },
+              capabilities: {
+                type: 'array',
+                description: 'List of server capabilities (optional)',
+                items: { type: 'string' }
+              }
             },
-            required: ['request'],
-          },
-        },
-        {
-          name: 'classify_task',
-          description: 'Classify a task\'s complexity and get recommended model without executing',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              description: {
+            ['name']
+          ),
+          createToolDefinition(
+            'list_servers',
+            'List all registered MCP servers',
+            {
+              statusFilter: {
                 type: 'string',
-                description: 'Task description',
-              },
-              prompt: {
-                type: 'string',
-                description: 'Task prompt',
-              },
+                description: 'Filter by status (online, offline, all)',
+                enum: ['online', 'offline', 'all']
+              }
             },
-            required: ['description', 'prompt'],
-          },
-        },
-        {
-          name: 'estimate_cost',
-          description: 'Estimate the cost of executing a request',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              request: {
+            []
+          ),
+          createToolDefinition(
+            'get_server_info',
+            'Get detailed information about a specific registered server',
+            {
+              name: {
                 type: 'string',
-                description: 'The request to estimate',
-              },
+                description: 'Name of the server to query'
+              }
             },
-            required: ['request'],
-          },
-        },
-        {
-          name: 'list_models',
-          description: 'List all available models and their capabilities',
-          inputSchema: {
-            type: 'object',
-            properties: {},
-          },
-        },
-      ],
-    };
-  });
-  
-  // Handle tool calls
-  server.setRequestHandler(CallToolRequestSchema, async (request) => {
-    const { name, arguments: args } = request.params;
-    
-    try {
+            ['name']
+          )
+        ]
+      };
+    });
+
+    // Handle tool calls
+    this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
+      const { name, arguments: args } = request.params;
+
+      this.requestCount++;
+
       switch (name) {
-        case 'orchestrate_task': {
-          const result = await orchestrator.orchestrate(args.request, {
-            maxCost: args.maxCost,
-            maxDuration: args.maxDuration,
-            preferredStrategy: args.strategy,
-          });
-          
-          return {
-            content: [
-              {
-                type: 'text',
-                text: JSON.stringify({
-                  success: result.success,
-                  synthesis: result.synthesis,
-                  totalCost: result.totalCost,
-                  totalDuration: result.totalDuration,
-                  tasks: result.results.map(r => ({
-                    id: r.taskId,
-                    model: r.model,
-                    success: r.success,
-                    cost: r.cost,
-                    duration: r.durationMs,
-                  })),
-                  details: result.results,
-                }, null, 2),
-              },
-            ],
-          };
-        }
-        
-        case 'classify_task': {
-          const taskClassifier = orchestrator['classifier'];
-          const task = {
-            id: 'temp',
-            description: args.description,
-            prompt: args.prompt,
-            priority: 1,
-          };
-          
-          const complexity = taskClassifier.classifyComplexity(task);
-          const model = taskClassifier.selectModel(task);
-          const cost = taskClassifier.estimateCost(task, model);
-          
-          return {
-            content: [
-              {
-                type: 'text',
-                text: JSON.stringify({
-                  complexity,
-                  recommendedModel: model.name,
-                  estimatedCost: cost,
-                  modelDetails: {
-                    provider: model.provider,
-                    capabilities: model.capabilities,
-                  },
-                }, null, 2),
-              },
-            ],
-          };
-        }
-        
-        case 'estimate_cost': {
-          // Create a simple estimation by planning
-          const plan = await orchestrator['planExecution'](args.request);
-          
-          return {
-            content: [
-              {
-                type: 'text',
-                text: JSON.stringify({
-                  estimatedCost: plan.estimatedCost,
-                  estimatedDuration: plan.estimatedDuration,
-                  taskCount: plan.tasks.length,
-                  strategy: plan.strategy,
-                  breakdown: plan.tasks.map(t => ({
-                    id: t.id,
-                    description: t.description,
-                    complexity: t.complexity,
-                    preferredModel: t.preferredModel,
-                  })),
-                }, null, 2),
-              },
-            ],
-          };
-        }
-        
-        case 'list_models': {
-          return {
-            content: [
-              {
-                type: 'text',
-                text: JSON.stringify({
-                  models: config.models.map(m => ({
-                    name: m.name,
-                    provider: m.provider,
-                    model: m.model,
-                    enabled: m.enabled,
-                    capabilities: m.capabilities,
-                    costPer1MInputTokens: m.costPer1MInputTokens,
-                    costPer1MOutputTokens: m.costPer1MOutputTokens,
-                    maxContext: m.maxContext,
-                  })),
-                }, null, 2),
-              },
-            ],
-          };
-        }
-        
+        case 'get_status':
+          return await this.handleGetStatus(args as any);
+        case 'register_server':
+          return await this.handleRegisterServer(args as any);
+        case 'list_servers':
+          return await this.handleListServers(args as any);
+        case 'get_server_info':
+          return await this.handleGetServerInfo(args as any);
         default:
           throw new Error(`Unknown tool: ${name}`);
       }
-    } catch (error) {
-      logger.error({ error, tool: name }, 'Tool execution failed');
-      
-      return {
-        content: [
-          {
-            type: 'text',
-            text: JSON.stringify({
-              error: error instanceof Error ? error.message : 'Unknown error',
-            }),
-          },
-        ],
-        isError: true,
+    });
+  }
+
+  private async handleGetStatus(args: any) {
+    try {
+      const { includeServers = true } = args;
+      const uptime = Date.now() - this.startTime.getTime();
+      const memUsage = process.memoryUsage();
+
+      const status = {
+        profile: config.getCurrentProfileName(),
+        workspace: config.getWorkspace(),
+        platform: process.platform,
+        model: this.modelManager.getCurrentModel(),
+        uptime: `${Math.floor(uptime / 1000)}s`,
+        uptimeMs: uptime,
+        requestCount: this.requestCount,
+        registeredServers: this.registeredServers.size,
+        memory: {
+          used: `${Math.round(memUsage.heapUsed / 1024 / 1024)}MB`,
+          total: `${Math.round(memUsage.heapTotal / 1024 / 1024)}MB`
+        },
+        criticalMode: config.isCriticalMode(),
+        timestamp: new Date().toISOString()
       };
+
+      let response = JSON.stringify(status, null, 2);
+
+      if (includeServers && this.registeredServers.size > 0) {
+        const servers = Array.from(this.registeredServers.values());
+        response += '\n\nRegistered Servers:\n';
+        response += JSON.stringify(servers, null, 2);
+      }
+
+      this.logger.info('Status retrieved', {
+        tool: 'get_status',
+        includeServers,
+        serverCount: this.registeredServers.size
+      });
+
+      return createTextContent(response);
+    } catch (error: any) {
+      this.logger.error('Status retrieval failed', {
+        tool: 'get_status',
+        error: error.message
+      });
+
+      return createErrorResponse(error);
     }
-  });
-  
-  // Start server
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
-  
-  logger.info('MCP Orchestrator Server running');
+  }
+
+  private async handleRegisterServer(args: any) {
+    const { name, port, model, capabilities } = args;
+
+    if (!name) {
+      return createErrorResponse('Missing required parameter: name');
+    }
+
+    try {
+      const serverInfo: ServerInfo = {
+        name,
+        port,
+        model,
+        capabilities: capabilities || [],
+        registeredAt: new Date(),
+        status: 'online'
+      };
+
+      this.registeredServers.set(name, serverInfo);
+
+      this.logger.info('Server registered', {
+        tool: 'register_server',
+        serverName: name,
+        port,
+        model
+      });
+
+      const response = {
+        success: true,
+        message: `Server '${name}' registered successfully`,
+        server: serverInfo,
+        totalServers: this.registeredServers.size,
+        timestamp: new Date().toISOString()
+      };
+
+      return createTextContent(JSON.stringify(response, null, 2));
+    } catch (error: any) {
+      this.logger.error('Server registration failed', {
+        tool: 'register_server',
+        serverName: name,
+        error: error.message
+      });
+
+      return createErrorResponse(error);
+    }
+  }
+
+  private async handleListServers(args: any) {
+    try {
+      const { statusFilter = 'all' } = args;
+      let servers = Array.from(this.registeredServers.values());
+
+      if (statusFilter !== 'all') {
+        servers = servers.filter(s => s.status === statusFilter);
+      }
+
+      const response = {
+        servers,
+        total: servers.length,
+        online: servers.filter(s => s.status === 'online').length,
+        offline: servers.filter(s => s.status === 'offline').length,
+        filter: statusFilter,
+        timestamp: new Date().toISOString()
+      };
+
+      this.logger.info('Servers listed', {
+        tool: 'list_servers',
+        filter: statusFilter,
+        count: servers.length
+      });
+
+      return createTextContent(JSON.stringify(response, null, 2));
+    } catch (error: any) {
+      this.logger.error('Server listing failed', {
+        tool: 'list_servers',
+        error: error.message
+      });
+
+      return createErrorResponse(error);
+    }
+  }
+
+  private async handleGetServerInfo(args: any) {
+    const { name } = args;
+
+    if (!name) {
+      return createErrorResponse('Missing required parameter: name');
+    }
+
+    try {
+      const server = this.registeredServers.get(name);
+
+      if (!server) {
+        return createErrorResponse(`Server '${name}' not found in registry`);
+      }
+
+      this.logger.info('Server info retrieved', {
+        tool: 'get_server_info',
+        serverName: name
+      });
+
+      return createTextContent(JSON.stringify(server, null, 2));
+    } catch (error: any) {
+      this.logger.error('Server info retrieval failed', {
+        tool: 'get_server_info',
+        serverName: name,
+        error: error.message
+      });
+
+      return createErrorResponse(error);
+    }
+  }
+
+  async start() {
+    try {
+      // Check Ollama health
+      const isHealthy = await this.modelManager.checkHealth();
+      if (!isHealthy) {
+        this.logger.warn('Ollama not available, starting anyway');
+      }
+
+      const transport = new StdioServerTransport();
+      await this.server.connect(transport);
+
+      this.logger.info(`${SERVER_NAME} MCP server started`, {
+        model: this.modelManager.getCurrentModel(),
+        tools: ['get_status', 'register_server', 'list_servers', 'get_server_info']
+      });
+    } catch (error: any) {
+      console.error('Failed to start server:', error);
+      process.exit(1);
+    }
+  }
 }
 
-main().catch((error) => {
-  logger.error({ error }, 'Fatal error');
-  process.exit(1);
-});
+const orchestrator = new MCPOrchestrator();
+orchestrator.start();
+
+export default MCPOrchestrator;

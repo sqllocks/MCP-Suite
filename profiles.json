@@ -1,0 +1,185 @@
+{
+  "profiles": {
+    "Personal": {
+      "platforms": {
+        "darwin": {
+          "workspace": "/Users/sqllocks/OneDrive/VSCode/Personal/general-workspace",
+          "user": "sqllocks"
+        },
+        "win32": {
+          "workspace": "C:\\Users\\suref\\OneDrive\\VSCode\\Personal\\general-workspace",
+          "user": "suref"
+        }
+      },
+      "networking": {
+        "basePort": 3000,
+        "portRange": [3000, 3029]
+      },
+      "models": {
+        "darwin": {
+          "fast": "llama3.1:8b",
+          "code_fast": "qwen2.5-coder:7b",
+          "primary": "qwen2.5-coder:32b",
+          "debugging": "deepseek-coder:33b",
+          "rag": "command-r:35b",
+          "critical": "qwen2.5-coder:32b"
+        },
+        "win32": {
+          "fast": "llama3.1:8b",
+          "code_fast": "qwen2.5-coder:7b",
+          "primary": "qwen2.5:72b",
+          "debugging": "deepseek-coder:33b",
+          "security": "llama3.1:70b",
+          "rag": "command-r:35b"
+        }
+      },
+      "security": {
+        "jwtSecret": "${PERSONAL_JWT_SECRET}",
+        "tokenExpiry": "24h"
+      }
+    },
+    "PathGroup": {
+      "platforms": {
+        "darwin": {
+          "workspace": "/Users/sqllocks/OneDrive/VSCode/AzureClients/pathgroup-workspace",
+          "user": "sqllocks"
+        },
+        "win32": {
+          "workspace": "C:\\Users\\suref\\OneDrive\\VSCode\\AzureClients\\pathgroup-workspace",
+          "user": "suref"
+        }
+      },
+      "networking": {
+        "basePort": 4000,
+        "portRange": [4000, 4029]
+      },
+      "models": {
+        "darwin": {
+          "fast": "llama3.1:8b",
+          "code_fast": "qwen2.5-coder:7b",
+          "primary": "qwen2.5-coder:32b",
+          "debugging": "deepseek-coder:33b",
+          "rag": "command-r:35b",
+          "critical": "qwen2.5-coder:32b"
+        },
+        "win32": {
+          "fast": "llama3.1:8b",
+          "code_fast": "qwen2.5-coder:7b",
+          "primary": "qwen2.5:72b",
+          "debugging": "deepseek-coder:33b",
+          "security": "llama3.1:70b",
+          "rag": "command-r:35b"
+        }
+      },
+      "security": {
+        "jwtSecret": "${PATHGROUP_JWT_SECRET}",
+        "tokenExpiry": "24h"
+      }
+    },
+    "Beacon": {
+      "platforms": {
+        "darwin": {
+          "workspace": "/Users/sqllocks/OneDrive/VSCode/AzureClients/beacon-workspace",
+          "user": "sqllocks"
+        },
+        "win32": {
+          "workspace": "C:\\Users\\suref\\OneDrive\\VSCode\\AzureClients\\beacon-workspace",
+          "user": "suref"
+        }
+      },
+      "networking": {
+        "basePort": 5000,
+        "portRange": [5000, 5029]
+      },
+      "models": {
+        "darwin": {
+          "fast": "llama3.1:8b",
+          "code_fast": "qwen2.5-coder:7b",
+          "primary": "qwen2.5-coder:32b",
+          "debugging": "deepseek-coder:33b",
+          "rag": "command-r:35b",
+          "critical": "qwen2.5-coder:32b"
+        },
+        "win32": {
+          "fast": "llama3.1:8b",
+          "code_fast": "qwen2.5-coder:7b",
+          "primary": "qwen2.5:72b",
+          "debugging": "deepseek-coder:33b",
+          "security": "llama3.1:70b",
+          "rag": "command-r:35b"
+        }
+      },
+      "security": {
+        "jwtSecret": "${BEACON_JWT_SECRET}",
+        "tokenExpiry": "24h"
+      }
+    },
+    "EyeSouth": {
+      "platforms": {
+        "darwin": {
+          "workspace": "/Users/sqllocks/OneDrive/VSCode/AzureClients/eyesouth-workspace",
+          "user": "sqllocks"
+        },
+        "win32": {
+          "workspace": "C:\\Users\\suref\\OneDrive\\VSCode\\AzureClients\\eyesouth-workspace",
+          "user": "suref"
+        }
+      },
+      "networking": {
+        "basePort": 6000,
+        "portRange": [6000, 6029]
+      },
+      "models": {
+        "darwin": {
+          "fast": "llama3.1:8b",
+          "code_fast": "qwen2.5-coder:7b",
+          "primary": "qwen2.5-coder:32b",
+          "debugging": "deepseek-coder:33b",
+          "rag": "command-r:35b",
+          "critical": "qwen2.5-coder:32b"
+        },
+        "win32": {
+          "fast": "llama3.1:8b",
+          "code_fast": "qwen2.5-coder:7b",
+          "primary": "qwen2.5:72b",
+          "debugging": "deepseek-coder:33b",
+          "security": "llama3.1:70b",
+          "rag": "command-r:35b"
+        }
+      },
+      "security": {
+        "jwtSecret": "${EYESOUTH_JWT_SECRET}",
+        "tokenExpiry": "24h"
+      }
+    }
+  },
+  "serverAssignments": {
+    "mcp-observability": { "model": "fast" },
+    "mcp-stream-processor": { "model": "fast" },
+    "mcp-memory": { "model": "fast" },
+    "mcp-export": { "model": "fast" },
+    "mcp-vscode-workspace": { "model": "fast" },
+    "mcp-frequency-tracking": { "model": "fast" },
+    "mcp-code-sync": { "model": "code_fast" },
+    "mcp-git": { "model": "code_fast" },
+    "mcp-sql-explorer": { "model": "primary" },
+    "mcp-fabric-live": { "model": "primary" },
+    "mcp-fabric-search": { "model": "primary" },
+    "mcp-docs-generator": { "model": "primary" },
+    "mcp-document-generator": { "model": "primary" },
+    "mcp-diagram-generator": { "model": "primary" },
+    "mcp-synthetic-data-generator": { "model": "primary" },
+    "mcp-nl-interface": { "model": "primary" },
+    "humanizer-mcp": { "model": "primary" },
+    "mcp-ml-inference": { "model": "primary" },
+    "mcp-error-diagnosis": { "model": "debugging" },
+    "mcp-impact-analysis": { "model": "debugging" },
+    "mcp-code-search": { "model": "debugging" },
+    "security-guardian-mcp": { "model": "security", "fallback": "primary" },
+    "mcp-tokenization-secure": { "model": "security", "fallback": "primary" },
+    "auto-remediation": { "model": "security", "fallback": "debugging" },
+    "mcp-microsoft-docs": { "model": "security", "fallback": "primary" },
+    "mcp-docs-rag": { "model": "rag" },
+    "mcp-kb": { "model": "rag" }
+  }
+}
